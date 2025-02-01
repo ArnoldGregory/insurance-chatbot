@@ -1,5 +1,6 @@
 from flask import Flask, render_template, jsonify, request
 from src.helper import download_hugging_face_embeddings
+from pinecone import Pinecone
 from langchain.vectorstores import Pinecone
 import pinecone
 from langchain.prompts import PromptTemplate
@@ -8,11 +9,15 @@ from langchain.chains import RetrievalQA
 from dotenv import load_dotenv
 from src.prompt import *
 import os
+import sys
 
+# Add the 'src' directory to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
 app = Flask(__name__)
 
 load_dotenv()
 
+from src.helper import download_hugging_face_embeddings
 
 
 embeddings = download_hugging_face_embeddings()
@@ -25,7 +30,7 @@ pc = Pinecone(api_key="pcsk_6KC7X7_C63yRFNLptAy8xikMD6eFsbXJRgDgtfUETSB4i3GPKZxL
 index_name="insurance"
 
 #Loading the index
-vector_store=Pinecone.from_existing_index(index_name, embeddings)
+batch=Pinecone.from_existing_index(index_name, embeddings)
 
 
 PROMPT=PromptTemplate(template=prompt_template, input_variables=["context", "question"])
@@ -41,7 +46,7 @@ llm=CTransformers(model="model/llama-2-7b-chat.ggmlv3.q4_0.bin",
 qa=RetrievalQA.from_chain_type(
     llm=llm, 
     chain_type="stuff", 
-    retriever=vector_store.as_retriever(search_kwargs={'k': 2}),
+    retriever=batch.as_retriever(search_kwargs={'k': 2}),
     return_source_documents=True, 
     chain_type_kwargs=chain_type_kwargs)
 

@@ -25,5 +25,21 @@ pc = Pinecone(api_key="pcsk_6KC7X7_C63yRFNLptAy8xikMD6eFsbXJRgDgtfUETSB4i3GPKZxL
 
 index_name="insurance"
 
-#Loading the index
-vector_store=Pinecone.from_existing_index(index_name, embeddings)
+#Creating Embeddings for Each of The Text Chunks & storing
+# docsearch=Pinecone.from_texts([t.page_content for t in text_chunks], embeddings, index_name=index_name)
+
+# Format the embeddings correctly
+vectors = [
+    {
+        "id": str(i),  # Unique string ID
+        "values": embeddings[i],  # The actual vector
+        "metadata": {"text": text_chunks[i]}  # Metadata (optional)
+    }
+    for i in range(len(text_chunks))
+]
+
+# ✅ Batch the vectors (split into chunks of 1000)
+batch_size = 1000
+for i in range(0, len(vectors), batch_size):
+    batch = vectors[i : i + batch_size]
+    index.upsert(vectors=batch, namespace="insurance")
