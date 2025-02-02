@@ -1,45 +1,58 @@
-from src.helper import load_pdf, text_split, download_hugging_face_embeddings
-from langchain.vectorstores import Pinecone
-import pinecone
-from dotenv import load_dotenv
 import os
+from pinecone import Pinecone, ServerlessSpec
+from langchain.vectorstores import Pinecone as LangChainPinecone
+from dotenv import load_dotenv
+import pinecone
+from src.helper import load_pdf, text_split, download_hugging_face_embeddings
 
+# Load environment variables
 load_dotenv()
 
-PINECONE_API_KEY = "pcsk_6KC7X7_C63yRFNLptAy8xikMD6eFsbXJRgDgtfUETSB4i3GPKZxLT1aSDxQDfGZYhd8iMr"
-# HOST_URL = "https://insurance-207ckai.svc.aped-4627-b74a.pinecone.io"
-# PINECONE_API_ENV = os.environ.get('PINECONE_API_ENV')
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")  # Load API key from .env
+PINECONE_ENV = "us-east-1"  # Your Pinecone environment (adjust if needed)
+INDEX_NAME = "insurance"
 
-# print(PINECONE_API_KEY)
-# print(PINECONE_API_ENV)
+# Initialize Pinecone using the new class-based approach
+pc = Pinecone(api_key=PINECONE_API_KEY)
 
+# Create or connect to the Pinecone index
+if INDEX_NAME not in pc.list_indexes().names():
+    print(f"Index '{INDEX_NAME}' not found. Creating...")
+    pc.create_index(
+        name=INDEX_NAME,
+        dimension=384,
+        metric="cosine",
+        spec=ServerlessSpec(cloud="aws", region=PINECONE_ENV)
+    )
+
+# Connect to the index
+index = pc.Index(INDEX_NAME)
+
+# Load and process data
 extracted_data = load_pdf("data/")
 text_chunks = text_split(extracted_data)
 embeddings = download_hugging_face_embeddings()
 
+# Extract text content
+texts = [doc.page_content for doc in text_chunks]
 
-#Initializing the Pinecone
-pc = Pinecone(api_key="pcsk_6KC7X7_C63yRFNLptAy8xikMD6eFsbXJRgDgtfUETSB4i3GPKZxLT1aSDxQDfGZYhd8iMr")
-# PINECONE_API_ENV = os.environ.get('PINECONE_API_ENV')
+# Generate embeddings
+embedded_texts = embeddings.embed_documents(texts)
 
-
-index_name="insurance"
-
-#Creating Embeddings for Each of The Text Chunks & storing
-# docsearch=Pinecone.from_texts([t.page_content for t in text_chunks], embeddings, index_name=index_name)
-
-# Format the embeddings correctly
+# Format data for Pinecone
 vectors = [
     {
-        "id": str(i),  # Unique string ID
-        "values": embeddings[i],  # The actual vector
-        "metadata": {"text": text_chunks[i]}  # Metadata (optional)
+        "id": str(i),  
+        "values": embedded_texts[i],  
+        "metadata": {"text": texts[i]}  
     }
-    for i in range(len(text_chunks))
+    for i in range(len(texts))
 ]
 
-# ✅ Batch the vectors (split into chunks of 1000)
+# Batch upsert (upload vectors in batches of 1000)
 batch_size = 1000
 for i in range(0, len(vectors), batch_size):
     batch = vectors[i : i + batch_size]
     index.upsert(vectors=batch, namespace="insurance")
+
+print("✅ Data upserted successfully!")
